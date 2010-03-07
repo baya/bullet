@@ -2,9 +2,10 @@ module Bullet
   module ActiveRecord
     def self.enable
       require 'active_record'
-
       ::ActiveRecord::Relation.class_eval do
         alias_method :origin_to_a, :to_a
+        # if select a collection of objects, then these objects have possible to cause N+1 query.
+        # if select only one object, then the only one object has impossible to cause N+1 query.
         def to_a
           records = origin_to_a
           if records.size > 1
@@ -20,6 +21,8 @@ module Bullet
 
       ::ActiveRecord::AssociationPreload::ClassMethods.class_eval do
         alias_method :origin_preload_associations, :preload_associations
+        # include query for one to many associations.
+        # keep this eager loadings.
         def preload_associations(records, associations, preload_options={})
           records = [records].flatten.compact.uniq
           return if records.empty?
@@ -32,6 +35,7 @@ module Bullet
       end
 
       ::ActiveRecord::FinderMethods.class_eval do
+        # add includes in scope
         alias_method :origin_find_with_associations, :find_with_associations
         def find_with_associations
           records = origin_find_with_associations
@@ -47,6 +51,7 @@ module Bullet
 
       ::ActiveRecord::Associations::ClassMethods::JoinDependency.class_eval do
         alias_method :origin_construct_association, :construct_association
+        # call join associations
         def construct_association(record, join, row)
           associations = join.reflection.name
           Bullet::Association.add_object_associations(record, associations)
@@ -88,7 +93,6 @@ module Bullet
 
       ::ActiveRecord::Associations::HasManyThroughAssociation.class_eval do
         alias_method :origin_has_cached_counter?, :has_cached_counter?
-
         def has_cached_counter?
           result = origin_has_cached_counter?
           Bullet::Counter.add_counter_cache(@owner, @reflection.name) unless result
